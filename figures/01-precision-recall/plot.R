@@ -33,9 +33,9 @@ data %>%
   theme(legend.position = "bottom")
 
 ggsave(
-  "figures/01-f1_scores/f1-normal.pdf",
+  "figures/01-precision-recall/f1-normal.pdf",
   units = "mm",
-  width = fig.witdh, height = fig.height,
+  width = fig.witdh, height = fig.height
 )
 
 data %>%
@@ -51,9 +51,9 @@ data %>%
   theme(legend.position = "bottom")
 
 ggsave(
-  "figures/01-f1_scores/f1-counts.pdf",
+  "figures/01-precision-recall/f1-counts.pdf",
   units = "mm",
-  width = fig.witdh, height = fig.height,
+  width = fig.witdh, height = fig.height
 )
 
 data %>%
@@ -78,9 +78,9 @@ data %>%
   theme(legend.position = "bottom")
 
 ggsave(
-  "figures/01-f1_scores/prec_recall-normal.pdf",
+  "figures/01-precision-recall/prec_recall-normal.pdf",
   units = "mm",
-  width = fig.witdh, height = fig.height,
+  width = fig.witdh, height = fig.height
 )
 
 data %>%
@@ -105,7 +105,7 @@ data %>%
   theme(legend.position = "bottom")
 
 ggsave(
-  "figures/01-f1_scores/prec_recall-counts.pdf",
+  "figures/01-precision-recall/prec_recall-counts.pdf",
   units = "mm",
-  width = fig.witdh, height = fig.height,
+  width = fig.witdh, height = fig.height
 )

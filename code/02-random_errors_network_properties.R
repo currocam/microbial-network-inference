@@ -5,6 +5,8 @@ library(tidyverse)
 library(huge)
 library(furrr)
 
+source("src/network_metrics.R")
+
 modify_graph <- function(true_graph, n_missing, n_spurious) {
   edges_not_in_g <- complementer(true_graph) %>% as_edgelist()
   edges_in_g <- as_edgelist(true_graph) %>% apply(1, paste0, collapse = "|")
@@ -20,29 +22,6 @@ modify_graph <- function(true_graph, n_missing, n_spurious) {
   }
   true_graph
 }
-
-compute_modularity <- function(graph) {
-  if (is.null(graph)) {
-    return(NA)
-  }
-  walktrap <- cluster_walktrap(graph)
-  modularity(walktrap)
-}
-
-compute_distance <- function(graph) {
-  if (is.null(graph)) {
-    return(NA)
-  }
-  dist <- distances(graph)
-  dist[upper.tri(dist)]
-}
-
-compute_adjusted_mutual_information <- function(x, y) {
-  xclust <- x %>% cluster_walktrap()
-  yclust <- y %>% cluster_walktrap()
-  aricode::AMI(xclust$membership, yclust$membership)
-}
-
 
 run <- function(graph, seed) {
   set.seed(seed)

@@ -12,5 +12,5 @@ run:
 
 .PHONY: lint
 lint:
-	R --vanilla -e 'source("renv/activate.R"); styler::style_dir(c("src", "code", "figures", "report"))'
+	R --vanilla -e 'source("renv/activate.R"); styler::style_dir(".", filetype = "R")'
 	snakemake -s Snakefile -c8 --touch

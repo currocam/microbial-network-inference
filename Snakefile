@@ -2,11 +2,21 @@ rule all:
     input:
         expand(
             "steps/{dir2}/.SUCCESS",
-            dir2=["fits", "random_errors", "credibility_confidence_intervals"],
+            dir2=[
+                "fits",
+                "random_errors",
+                "credibility_confidence_intervals",
+                "network_properties_bma",
+            ],
         ),
         expand(
             "figures/{dir2}/.SUCCESS",
-            dir2=["01-precision-recall", "02-regression", "03-credibility-confidence"],
+            dir2=[
+                "01-precision-recall",
+                "02-regression",
+                "03-credibility-confidence",
+                "04-network_properties_bma",
+            ],
         ),
 
 
@@ -61,6 +71,21 @@ rule confidence_credibility_intervals:
         "Rscript --vanilla {input.script}"
 
 
+rule network_properties_bma:
+    input:
+        infiles=["src/network_metrics.R", "src/train.R"],
+        script="code/04-network_properties_bma.R",
+    output:
+        expand(
+            "steps/network_properties_bma/{graph}_{n}.Rds",
+            graph=["random", "cluster"],
+            n=range(100, 105),
+        ),
+        touch("steps/network_properties_bma/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
 rule fig_precision_recall:
     input:
         input=["steps/fits/.SUCCESS", "figures/theme.R"],
@@ -108,5 +133,19 @@ rule fig_confidence_credibility_intervals:
         "figures/03-credibility-confidence/modularity.pdf",
         "figures/03-credibility-confidence/distances_spearman.pdf",
         touch("figures/03-credibility-confidence/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
+rule fig_network_properties_bma:
+    input:
+        input=["steps/network_properties_bma/.SUCCESS", "figures/theme.R"],
+        script="figures/04-network_properties_bma/plots.R",
+    output:
+        "figures/04-network_properties_bma/cluster_ami.pdf",
+        "figures/04-network_properties_bma/hub_score.pdf",
+        "figures/04-network_properties_bma/modularity.pdf",
+        "figures/04-network_properties_bma/distances_spearman.pdf",
+        touch("figures/04-network_properties_bma/.SUCCESS"),
     shell:
         "Rscript --vanilla {input.script}"

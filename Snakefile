@@ -7,6 +7,8 @@ rule all:
                 "random_errors",
                 "credibility_confidence_intervals",
                 "network_properties_bma",
+                "network_properties_stability",
+                "fits_combined",
             ],
         ),
         expand(
@@ -23,19 +25,34 @@ rule all:
 rule fit_simulated_data:
     input:
         script="code/01-fit_simulated_data.R",
-        infiles="train.R",
+        infiles="src/train.R",
     threads: 8
     output:
         expand(
-            "steps/fits/{graph}_{n}.csv",
+            "steps/fits/{graph}_{n}.Rds",
             graph=["hub", "cluster"],
             n=range(600, 611),
         ),
         expand(
-            "steps/fits/random_{n}.png",
+            "steps/fits/random_{n}.Rds",
             n=range(600, 631),
         ),
         touch("steps/fits/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
+rule fit_simulated_data_combn:
+    input:
+        script="code/06-fit_combined.R",
+        infiles="src/train.R",
+    threads: 8
+    output:
+        expand(
+            "steps/fits_combined/random_{n}.Rds",
+            n=range(600, 611),
+        ),
+        touch("steps/fits_combined/.SUCCESS"),
     shell:
         "Rscript --vanilla {input.script}"
 
@@ -47,7 +64,7 @@ rule random_errors_network_properties:
     threads: 8
     output:
         expand(
-            "steps/random_errors/{graph}_{n}.csv",
+            "steps/random_errors/{graph}_{n}.Rds",
             graph=["random", "hub", "cluster"],
             n=range(100, 116),
         ),
@@ -82,6 +99,21 @@ rule network_properties_bma:
             n=range(100, 105),
         ),
         touch("steps/network_properties_bma/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
+rule network_properties_stability:
+    input:
+        infiles=["src/network_metrics.R", "src/train.R"],
+        script="code/05-network_properties_stability.R",
+    output:
+        expand(
+            "steps/network_properties_stability/{graph}_{n}.Rds",
+            graph=["random", "cluster"],
+            n=range(100, 105),
+        ),
+        touch("steps/network_properties_stability/.SUCCESS"),
     shell:
         "Rscript --vanilla {input.script}"
 

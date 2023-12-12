@@ -3,17 +3,18 @@ source("renv/activate.R")
 library(igraph)
 library(tidyverse)
 library(BDgraph)
+library(pulsar)
 library(VGAM)
 library(compositions)
 
 source("src/network_metrics.R")
 source("src/train.R")
 
-simulate_graphs_from_plinks <- function(fit, n, seed) {
+simulate_graphs_from_scores <- function(scores, seed) {
   set.seed(seed)
   sim_graph <- matrix(0, 100, 100)
-  probs <- as.numeric(fit$p_links[upper.tri(fit$p_links)])
-  indicator <- map(probs, \(p) rbinom(n, 1, p)) |> reduce(rbind)
+  probs <- as.numeric(scores[upper.tri(scores)])
+  indicator <- map(probs, \(p) rbinom(1, 1, p)) |> reduce(rbind)
   graphs <- apply(indicator, 2, \(ind){
     sim_graph <- sim_graph * 0
     sim_graph[upper.tri(sim_graph)] <- ind
@@ -53,15 +54,11 @@ run <- function(graph, seed) {
       slice_sample(n = n) |>
       clr() |>
       as.matrix()
-    fit_bd <- bdgraph(
-      data = data,
-      method = "ggm",
-      iter = 50000,
-      cores = 8
-    )
+    confidence_scores <- train_pulsar_confidence_scores(data)
+
     res <<- bind_rows(
       res, map(1:100, \(i){
-        g <- simulate_graphs_from_plinks(fit_bd, 1, i)[[1]]
+        g <- simulate_graphs_from_scores(confidence_scores, i)[[1]]
         list(
           modularity_error = true_mod - compute_modularity(g),
           spearman = compute_distance(g) |> cor(true_dist, method = "spearman"),
@@ -71,7 +68,7 @@ run <- function(graph, seed) {
         bind_rows() |>
         map(quantile, seq(0, 1, 0.025)) |>
         bind_rows(.id = "metric") |>
-        mutate(n = n, method = "bdgraph")
+        mutate(n = n, method = "pulsar")
     )
   })
   res
@@ -108,15 +105,11 @@ run2 <- function(graph, seed) {
       slice_sample(n = n) |>
       clr() |>
       as.matrix()
-    fit_bd <- bdgraph(
-      data = data,
-      method = "ggm",
-      iter = 50000,
-      cores = 8
-    )
+    confidence_scores <- train_pulsar_confidence_scores(data)
+
     res <<- bind_rows(
       res, map(1:100, \(i){
-        g <- simulate_graphs_from_plinks(fit_bd, 1, i)[[1]]
+        g <- simulate_graphs_from_scores(confidence_scores, i)[[1]]
         list(
           ami = compute_adjusted_mutual_information(g, true_graph)
         )
@@ -124,14 +117,14 @@ run2 <- function(graph, seed) {
         bind_rows() |>
         map(quantile, seq(0, 1, 0.025)) |>
         bind_rows(.id = "metric") |>
-        mutate(n = n, method = "bdgraph")
+        mutate(n = n, method = "pulsar")
     )
   })
   res
 }
 
 walk(100:104, \(seed) run("random", seed) |>
-  write_rds(paste0("steps/network_properties_bma/random_", seed, ".Rds")))
+  write_rds(paste0("steps/network_properties_stability/random_", seed, ".Rds")))
 
 walk(100:104, \(seed) run2("cluster", seed) |>
-  write_rds(paste0("steps/network_properties_bma/cluster_", seed, ".Rds")))
+  write_rds(paste0("steps/network_properties_stability/cluster_", seed, ".Rds")))

@@ -36,3 +36,24 @@ train_pulsar <- function(data) {
   fit$est$path[[fit$stars$opt.index]] |>
     graph_from_adjacency_matrix(mode = "undirected")
 }
+
+train_pulsar_confidence_scores <- function(data) {
+  data <- as.matrix(data)
+  max_lamda <- getMaxCov(data)
+  path <- getLamPath(max_lamda, max_lamda * 0.001, len = 50)
+  hugeargs <- list(lambda = path, verbose = FALSE)
+  fit <- pulsar(
+    data,
+    fun = huge::huge, fargs = hugeargs,
+    rep.num = 100, criterion = "stars", thresh = 0.05,
+    lb.stars = TRUE, ub.stars = TRUE, ncores = 8
+  )
+  print(dim(data))
+  fit$stars$merge[[fit$stars$opt.index]]
+}
+
+sample_from_posterior <- function(x) {
+  1:length(x$sample_graphs) |>
+    sample(size = 1000, replace = TRUE, prob = x$graph_weights) |>
+    map(\(i) bdgraph2igraph(x$sample_graphs[[i]]))
+}

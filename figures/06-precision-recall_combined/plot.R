@@ -9,7 +9,7 @@ data <- map(infiles, read_rds) %>%
   bind_rows() %>%
   rowwise() %>%
   mutate(
-    inferred = BDgraph::select(bdgraph, cut = 0.5) %>% 
+    inferred = BDgraph::select(bdgraph, cut = 0.5) %>%
       graph_from_adjacency_matrix(mode = "undirected") %>%
       list(),
     tp = intersection(true_graph, inferred) %>% E() %>% length(),

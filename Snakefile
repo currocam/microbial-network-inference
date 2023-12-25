@@ -9,6 +9,7 @@ rule all:
                 "network_properties_bma",
                 "network_properties_stability",
                 "fits_combined",
+                "ranked_curves",
             ],
         ),
         expand(
@@ -18,8 +19,10 @@ rule all:
                 "02-regression",
                 "03-credibility-confidence",
                 "04-network_properties_bma",
+                "09-ranked_edges",
             ],
         ),
+        "steps/correlation_node_f1.csv",
 
 
 rule fit_simulated_data:
@@ -118,6 +121,21 @@ rule network_properties_stability:
         "Rscript --vanilla {input.script}"
 
 
+rule ranked_edges:
+    input:
+        infiles=["src/train.R"],
+        script="code/09-ranked_edges.R",
+    output:
+        expand(
+            "steps/ranked_curves/{graph}_{n}.Rds",
+            graph="random",
+            n=range(910, 916),
+        ),
+        touch("steps/ranked_curves/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
 rule fig_precision_recall:
     input:
         input=["steps/fits/.SUCCESS", "figures/theme.R"],
@@ -179,5 +197,26 @@ rule fig_network_properties_bma:
         "figures/04-network_properties_bma/modularity.pdf",
         "figures/04-network_properties_bma/distances_spearman.pdf",
         touch("figures/04-network_properties_bma/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
+rule fig_ranked_edges:
+    input:
+        input=["steps/ranked_curves/.SUCCESS", "figures/theme.R"],
+        script="figures/09-ranked_edges/plot.R",
+    output:
+        "figures/09-ranked_edges/plot.pdf",
+        touch("figures/09-ranked_edges/.SUCCESS"),
+    shell:
+        "Rscript --vanilla {input.script}"
+
+
+rule test_lrt_max_degree:
+    input:
+        script="code/07-correlation_node_f1.R",
+        infiles="steps/fits/.SUCCESS",
+    output:
+        "steps/correlation_node_f1.csv",
     shell:
         "Rscript --vanilla {input.script}"

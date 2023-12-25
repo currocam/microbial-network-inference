@@ -38,3 +38,39 @@ ggsave(
   units = "mm",
   width = fig.witdh, height = fig.height,
 )
+
+data |>
+  filter(gen == "normal") |>
+  ggplot(aes(x = n, y = spearman, colour = method)) +
+  geom_boxplot(aes(group = paste0(n, method))) +
+  scale_colour_discrete(labels = c("Bayesian", "SpiecEASI")) +
+  theme_classic() +
+  xlab("Number of samples") +
+  ylab("Spearman correlation of the distances") +
+  ylim(0, 1) +
+  labs(color = "") +
+  theme(legend.position = "none")
+
+ggsave(
+  "figures/02-regression/distances_spearman_normal.pdf",
+  units = "mm",
+  width = fig.witdh, height = fig.height,
+)
+
+data |>
+  filter(gen == "nbinom") |>
+  ggplot(aes(x = n, y = spearman, colour = method)) +
+  geom_boxplot(aes(group = paste0(n, method))) +
+  scale_colour_discrete(labels = c("Bayesian", "SpiecEASI")) +
+  theme_classic() +
+  ylim(0, 1) +
+  xlab("Number of samples") +
+  ylab("Spearman correlation of the distances") +
+  labs(color = "") +
+  theme(legend.position = "right")
+
+ggsave(
+  "figures/02-regression/distances_spearman_counts.pdf",
+  units = "mm",
+  width = fig.witdh, height = fig.height,
+)

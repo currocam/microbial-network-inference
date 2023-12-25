@@ -17,7 +17,7 @@ data <- map(infiles, read_rds) |>
 
 true_distances <- data$true_graph |> map(compute_distance)
 spearmans <- map2(true_distances, data$posterior, \(true, x){
-  map(x, ~cor(true, compute_distance(.x), method = "spearman")) |> as.numeric()
+  map(x, ~ cor(true, compute_distance(.x), method = "spearman")) |> as.numeric()
 })
 
 
@@ -27,7 +27,7 @@ data |>
     `50%` = map(spearmans, quantile, 0.5) |> as.numeric(),
     `2.5%` = map(spearmans, quantile, 0.025) |> as.numeric(),
     `97.5%` = map(spearmans, quantile, 0.975) |> as.numeric()
-    ) |>
+  ) |>
   mutate(n = as.factor(n)) |>
   arrange(`50%`) |>
   ggplot() +
@@ -50,8 +50,8 @@ ggsave(
 
 true_modularity <- data$true_graph |> map(compute_modularity)
 modularities <- map2(true_modularity, data$posterior, \(true, x){
-  map(x, ~true - compute_modularity(.x)) |> as.numeric()
-}) 
+  map(x, ~ true - compute_modularity(.x)) |> as.numeric()
+})
 
 data |>
   ungroup() |>
@@ -81,7 +81,7 @@ ggsave(
 )
 
 hub_error <- map2(data$true_graph, data$posterior, \(true, x){
-  map(x, ~compute_mean_error_hub_score(true, .x)) |> as.numeric()
+  map(x, ~ compute_mean_error_hub_score(true, .x)) |> as.numeric()
 })
 
 data |>
@@ -91,7 +91,7 @@ data |>
     `2.5%` = map(hub_error, quantile, 0.025) |> as.numeric(),
     `97.5%` = map(hub_error, quantile, 0.975) |> as.numeric(),
     n = as.factor(n)
-    ) |>
+  ) |>
   arrange(`50%`) |>
   ggplot() +
   geom_pointrange(

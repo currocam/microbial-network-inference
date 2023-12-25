@@ -1,0 +1,308 @@
+---
+title: "Microbial network inference"
+author:
+  - name: Francisco Campuzano Jiménez
+    affiliations:
+      - Bioinformatics Research Centre, Aarhus University
+fig-dpi: 200
+date: today
+affiliation: "BiRC"
+engine: "knitr"
+format:
+  pdf:
+    documentclass: article
+    papersize: a4
+    geometry:
+      - margin=1in
+    default-image-extension: pdf
+    linestretch: 1.25
+    fontfamily: times
+    keep-tex: true
+    number-sections: true
+    colorlinks: true
+    template-partials: 
+      - title.tex
+    include-in-header:
+      text: |
+        \usepackage[noblocks]{authblk}
+        \usepackage{subcaption}
+        \usepackage{lineno}
+        \renewcommand*{\Authsep}{, }
+        \renewcommand*{\Authand}{, }
+        \renewcommand*{\Authands}{, }
+        \renewcommand\Affilfont{\small}
+        \usepackage{lscape}
+        \newcommand{\blandscape}{\begin{landscape}}
+        \newcommand{\elandscape}{\end{landscape}}
+highlight-style: github
+bibliography: references.bib
+---
+
+```{=tex}
+\newpage
+\linenumbers
+```
+# Introduction
+
+The recent advances in microbial amplicon and metagenomic sequencing produce extensive collections of co-occurrence data suitable for quantitative analysis [@badri2020]. Microbial taxa associations *in situ* can not usually be assessed by observing interactions as in macro-ecosystems [@guseva2022]. Therefore, methods based on co-occurrence data and their interpretation are an active and controversial research topic [@blanchet2020].
+
+Microbial networks are temporary or spatial snapshots of ecosystems, where we display taxonomic units as nodes (but also environmental variables) and significant associations as undirected edges [@röttjers2018]. Many inference methods in the literature are based on pairwise correlation-based or graphical models [@matchado2021]. This work focuses on the latter, as they are less affected by correlated but indirectly connected taxa[^1].
+
+[^1]: Let us consider three random variables, A, B, and C, that correspond to the abundances of three OTUs. Assume that $\Pr(A |BC) = \Pr(A |B)$, $\Pr(B |AC) = \Pr(B)$ and $\Pr(C |AB) = \Pr(C |B)$. The edge $(A, C)$ is what the literature commonly defines as indirectly connected nodes (through $B$ in this example.
+
+The sequencing bioinformatics pipeline determines the exact meaning of the nodes, as raw reads can be clustered into operational taxonomic units, kept separated as amplicon sequence variants, and agglomerated into higher taxonomic levels [@bharti2021]. The biological meaning of networks has been qualified as "uncertain" and requires careful interpretation of all prior steps and their impact on the outcome [@faust2021].
+
+Microbial inference algorithms are known to return so-called hairballs (intricate and densely interconnected graphs) [@faust2021; @röttjers2018]. Some authors claimed it is necessary to estimate and analyze the network properties to gain biological insights from co-occurrence networks [@röttjers2018; @abu-mostafa2012].
+
+For example, at the network level, we can study whether some species tend to co-occur with each other more often, quantified by the modularity[^2] or how well the degree[^3] distribution fits a null distribution [@guseva2022]. At the node level, on the other hand, we can analyze the relation between network distances[^4] and phylogenetic similarity [@anetwor], as well as node centrality. However, it is unreasonable to assume that highly connected nodes in the network show any evidence of those taxa being keystone[^5] species [@röttjers2018; @guseva2022]. Therefore, we advise not using centrality measurements such as the hub score[^6] to identify keystone taxa, even though they are frequently used. Instead, centrality measurements should be used as an indicator of whether certain OTUs have broader niche preferences than others.
+
+[^2]: Formally, $Q = \frac{1}{2m}\sum_{ij}\left( A_{ij} - \gamma \frac{k_ik_j}{2m}\right )\mathbb1_{c_i = c_j}$, where $m$ is the number of edges, $A$ is the adjency matrix, $k_x$ is the degree of the $x$ node and $c_x$ the cluster of the $x$ node [@clauset2004].
+
+[^3]: The degree of a node is simply the number of edges it has [@hansen2011].
+
+[^4]: The shortest between two nodes is the path with the minimal number of edges.
+
+[^5]: "A species whose impact on its community or ecosystem is large, and disproportionately large relative to its abundance" [@power1996].
+
+[^6]: The hub scores are defined for undirected networks as the principal eigenvector of $A^\top A$, where $A$ is the adjacency matrix @kleinberg1998.
+
+The use of undirected Gaussian graphical models in this field has become increasingly popular. This work focuses on studying how reliable the results derived from network inference under typical conditions of working with environmental samples characterized by a limited number of samples. We have compared two methods, SpiecEASI [@kurtz2015], the most popular approach, and one novel Bayesian alternative based on the BDgraph package [@mohammadi2019].
+
+# Background
+
+```{r}
+#| label: fig-conceptual 
+#| fig-cap: "**Inferring a microbial network involves transforming the data and determining the graph structure from an sparse precision matrix estimate.** (a) Abundances of five different taxa across 200 samples, simulated according to a negative binomial process with unequal depth between samples. (b) Centered log-ratio abundances to address compositionality and the assumption of normality. (c) Graphical lasso estimation of the precision matrix ($\\lambda = 0.26$). (d) Graph structure that corresponds to the zero-pattern of $\\hat \\Omega(\\lambda = 0.26)$. False positive edges are shown in light red, and false negatives in grey."
+#| layout-ncol: 2
+#| echo: false
+#| fig-subcap: 
+#|   - ""
+#|   - ""
+#|   - ""
+#|   - ""
+library(knitr)
+include_graphics("../figures/00-conceptual_figures/abundances.svg")
+include_graphics("../figures/00-conceptual_figures/clr.svg")
+include_graphics("../figures/00-conceptual_figures/precision_mat.svg")
+include_graphics("../figures/00-conceptual_figures/graph.svg")
+```
+
+## Gaussian graphical models
+
+We adapted the definition of Gaussian graphical models from @uhler. Let $G = (V, E)$ be an undirected graph with nodes $V=\{1, \dots, p\}$ and edges $E \subset \{(i, j) \in V\times V : i<j\}$. In our application context, $V$ is the set of microbial taxa. We define the edges of the graph such that the absence of edge $(i, j)$ implies conditional independence between the taxon $i$ and $j$ given all the other variables.
+
+It is possible to infer the graph by first estimating the inverse of the covariance matrix, known as the precision matrix, $\Omega := \Sigma^{-1}$. The precision matrix is useful because, for every matrix element, it is true that $\Omega_{ij}=0$ if and only if the $i$ and $j$ are conditionally independent given the rest of the dimensions. Then, we can unambiguously determine the graph structure from the pattern of zero entries in the precision matrix (@fig-conceptual-3 and @fig-conceptual-4). Formally, we say that a random variable $X \in \mathbb R_p$ follows $G = (V, E)$ if it is distributed as $\mathcal N_p(0, \Omega ^{-1})$, where $\Omega$ is a positive definite matrix of dimensions $p\times p$ such that $\Omega_{ij} = 0$ implies $(i, j) \notin E$.
+
+Research inferring microbial networks using graphical models has focused exclusively on estimating sparse Gaussian graphical models. The most popular idea is to induce sparsity by imposing a $L_1$ penalty on the precision matrix. This approach has succeeded in the likelihood framework under the name of graphical lasso [@friedman2008].
+
+## Data transformation
+
+Unfortunately, microbial abundance data is not normal (@fig-conceptual-1). In the literature, methods overcome this issue by applying some transformation over the original discrete counts. Alternatively, methods that simultaneously estimate the precision matrix and a set of $p$ normal latent variables from the $p$ observed variables are known as Copula Gaussian graphical models.
+
+Even worse, microbial abundance data is highly compositional because of unequal depth and sampling. To compare abundances between samples, the observed counts, $\hat W\in \mathbb N_{n \times p}$, are often normalized by the total sum of counts per sample [@eq-relative].
+
+$$
+X_{ij} = \frac{\hat W_{ij}}{\sum_{m=1}^n \hat W_{im}}
+$$ {#eq-relative}
+
+However, this normalization imposes a sum-to-one constraint, making the relative abundances, $X \in \mathbb R^+_{n\times p}$, of the different taxa no longer independent. @kurtz2015 proposed to apply the centered log-ratio transformation (see @eq-clr) to the relative abundances and estimate the Gaussian graphical model from the transformed data $X \in \mathbb R_{n\times p}$ (@fig-conceptual-4). This transformation is by far the most widely used.
+
+$$
+Z_{ij} = \log \left (\frac{X_{ij}}{\left [ \prod_{m=1}^pX_{im}\right]^{\frac 1 p}}\right )
+$$ {#eq-clr}
+
+Let us denote the per-sample total counts sum as $m_i = \sum_{m=1}^p W_{i,m}$. The intuition behind the centered log-ratio transformation is that because $\log{\frac {W_{i*}}{W_{j*}}} = \log{\frac {W_{i*}/m_*}{W_{j*}/m_*}} = \log{\frac {X_{i*}}{X_{j*}}}$, the statistical inference done with the log ratios of relative abundances are equivalent to the one done with the log ratio of unobserved absolute abundances.
+
+SpiecEASI[^7], the most popular tool for inferring Gaussian graphical models from microbial abundance data, uses the centered-log ratio approach [@kurtz2015]. However, this transformation is not exempt from criticism. Because of numerical problems with the geometric mean of the samples in @eq-clr, SpiecEASI uses pseudo-counts instead of the original values. When data is zero-inflated, the transformed data will exhibit a peak corresponding to the spike at zero, which violates the normality assumption and might lead to spurious associations [@ha2020].
+
+[^7]: SpiecEASI stands for **SP**arse **I**nvers**E C**ovariance **E**stimation for ecological **AS**sociation **I**nference
+
+## Inferring sparse graph
+
+### Likelihood framework
+
+In the likelihood framework, inferring the sparse Gaussian graphical model is usually formulated according to @friedman2008:
+
+$$
+\begin{aligned}
+\mathcal L(\Omega) = \log |\Omega| - \text{trace}(\hat \Sigma \Omega)\\
+\hat \Omega(\lambda) = \arg \min_{\Omega\in M^+} (-L(\Omega) + \lambda ||\Omega||_1)
+\end{aligned}
+$$ {#eq-glasso}
+
+where $M^+$ is the set of positive definite matrices, $\hat \Sigma$ is the empirical covariance matrix, and $||\Omega||_1$ is the $L_1$ norm (the sum of all absolute values of the matrix). $\mathcal L(\Omega)$ is the log-likelihood of the data after maximizing over the mean vector $\mu$ and ignoring constants. $\lambda$ is a positive regularization parameter that controls the sparsity of the estimated precision matrix, $\hat \Omega(\lambda)$, and, consequently, of the graph $G(\lambda)$.
+
+Currently, there are algorithms that efficiently solve the optimization problem shown in @eq-glasso, frequently referred to as graphical lasso (or glasso). Before that, @meinshausen2006 had already proposed a method for estimating networks from a regularized precision matrix. Instead of estimating the whole matrix, they proposed estimating the patterns of zero elements by fitting $p$ lasso regressions and using each variable as the response variable. Let us denote as $\hat\beta_a^b$ the $a$-coefficient of the lasso regression with the $b$ variable as the response for a given value of $\lambda$. They constrained the estimated graph by excluding all the edges $(i, j)$ where either $\hat\beta_i^j = 0$ or $\hat\beta_j^i = 0$.
+
+Almost always, the sparsity of the true graph, thus, of the true unknown precision matrix, is unknown. The challenge that likelihood methods to infer microbial Gaussian graphical models face is selecting an appropriate value of $\lambda$. Different criteria might be used, such as selecting $\lambda$ so it optimizes the Akaike information criterion, the Bayesian information criterion, or the largest within one standard error of the optimal negative likelihood when doing cross-fold validation (or any equivalent rule of thumb). However, since the publication of the SPIEC-EASI method [@kurtz2015], nearly all research microbial co-occurrence network inferences have used the StARS[^8] selection method [@liu].
+
+[^8]: StARS stands for Stability Approach to Regularization Selection.
+
+The StARS method is a general procedure that could be applied to any graph inference method. However, @liu built it on top of the Meinshausen and Bühlmann method. Despite its simplicity, it gives better results than solving the graphical lasso in terms of speed, sensitivity, and accuracy.
+
+The core idea of StARS is to draw many random overlapping subsamples (without replacement) and apply the Meinshausen and Bühlmann method for each subsample with decreasing values of $\lambda$ until there is a small but acceptable amount of variability. They defined the variability in terms of the average total instability of the edges. Specifically, for any chosen $\lambda$, they estimate $m$ graphs, one from each $m$ subsample. They calculate the instability of a particular edge $(i, j)$ as the fraction of every possible pair of those $m$ graph that disagree in the presence or absence of the $(i, j)$ edge [@liu].
+
+@liu claimed they could estimate a graph containing the true graph with high probability by selecting the largest value of $\lambda$ (the most sparse graph) for which the average total instability equals or less than $\beta$. They claimed that this cut-point $\beta$ is an interpretable quantity (so they did not just replace the problem of choosing $\lambda$ to choose $\beta$) and that a reasonable default value is $\beta = 0.05$.
+
+### Bayesian framework
+
+@wang2012 were the first to introduce a Bayesian version of the graphical lasso estimator [@eq-glasso]. Although there are many alternatives, the main idea is to encode every value into an appropriate hierarchical model and use Markov Chain Monte Carlo (MCMC) to estimate the posterior distributions [@richardli2019; @li; @piironen2017]. Bayesian methods do not need to select a value for $\lambda$. Instead, $\lambda$ can be included in the model, with a prior that expresses the researcher's beliefs about the sparsity of the graph, and all inference is done by marginalizing across its value [@jongerling2023].
+
+Bayesian graphical lasso models are very attractive for estimating the precision matrix. However, all suffer from the same problem: because priors place no probability in any value being exactly zero, $\Omega_{ij}=0$, there is no probability of the event $\Omega_{ij}=0$ in the posterior either. When inferring microbial networks, we aim to estimate the graph, not the precision matrix. These methods require a *post hoc* heuristic on including or excluding an edge of the inferred sparse graph. For example, set all off-diagonal elements to zero if the 95% credibility interval contains the zero value [@jongerling2023].
+
+The alternative is to use a family of priors called G-Wishart, a discrete and continuous mixture prior distribution. If so, we estimate the joint posterior distribution of the precision matrix and the graph (@eq-join-post).
+
+$$
+P(G, \Omega|Z) \propto P(Z|G, \Omega) P(\Omega|G)P(G)
+$$ {#eq-join-post}
+
+Many priors have been proposed for the graph structure [@mohammadi2015; @carvalho2009; @jones2005]. One popular choice depends on a $\theta \in (0, 1)$ parameter that expresses our prior belief in the sparsity of the graph (see @eq-probg). Notice that if $\theta = 0.5$, the distribution corresponds to the uniform distribution over the whole graph space.
+
+$$
+P(G) \propto \left ( \frac{\theta}{1-\theta}\right) ^{|E|}
+$$ {#eq-probg}
+
+The G-Wishart distribution is a convenient prior choice for the precision matrix because it is conjugated with the likelihood function of a multivariate normal distribution [@roverato2002]. The G-Wishart prior of a given graph, $W_G(b, D)$, depends on the number of degrees of freedom $b>2$ and a matrix $D\in M^+$ that is usually set to be the identity matrix. @eq-probomega shows how to calculate the probability of the precision matrix given a graph. Notice that we ensure $\Omega$ is a valid precision matrix by multiplying the probability by the indicator variable $\mathbb 1_{\Omega\in M ^+}$ (i.e., set to zero the probability of any nonpositive definite matrix).
+
+$$
+P(\Omega|G) \propto |\Omega|^{(b-2)/2} \exp\left \{ -\frac 1 2 \text{trace}(D\Omega)  \right\} \mathbb 1_{\Omega\in M ^+}
+$$ {#eq-probomega}
+
+We need a particular type of algorithm, the so-called Trans-dimensional MCMC, to explore the graph space and estimate the model parameters simultaneously. The issue with this approach is that the graph space grows exponentially[^9] with the number of nodes/taxa, and convergence is complex. @mohammadi2015 proposed a birth-death MCMC that works well in practice. Every edge is added or removed according to an independent birth and death Poisson process. The main idea is that the algorithm is formulated such that the posterior distribution of a graph is proportional to how long the sampling algorithm stayed in a particular graph. In opposition to the frequentist approach we presented in the previous section, this method does not perform graph selection but graph search.
+
+[^9]: Concretely, there are $2^{p(p-1)/2}$ graphs.
+
+# Results
+
+## Simulation of synthetic datasets
+
+As the popularity of microbial co-occurrence networks has increased, more and more methods have been published in the last few years. Despite this, there is no accepted experimental or simulated dataset to reference when comparing the performance of different methods [@matchado2021]. We simulated data for different graph sizes and three network topologies (see @fig-networks). First, we simulated normal multivariate data such that their precision matrix was compatible with the graph (the opposite of what we do during inference). Then, we simulated correlated microbial abundances from the normal multivariate distribution. The abundance of every taxon was drawn from a negative binomial distribution and unequal depth between samples.
+
+::: {#fig-networks layout-ncol="2"}
+![Random network (Graph size = 193)](../figures/11-network_plots/random_500.pdf){#fig-random1}
+
+![Random network (Graph size = 120)](../figures/11-network_plots/random_100.pdf){#fig-random2}
+
+![Cluster network (Graph size = 184)](../figures/11-network_plots/cluster_100.pdf){#fig-cluster}
+
+![Hub network (Graph size = 294)](../figures/11-network_plots/hub_100.pdf){#fig-hub}
+
+We analyzed three representative network topologies: random, hub, and cluster. Subfigures show four randomly simulated networks with 100 nodes (taxonomic units) and a different number of edges (graph size). More details on its simulation in methods.
+:::
+
+## Recovery of microbial networks
+
+::: {#fig-prec_recall layout-ncol="1"}
+![Multivariate normal data](../figures/01-precision-recall/f1-normal.pdf){#fig-prec_recall_normal}
+
+![CLR -transformed microbial counts](../figures/01-precision-recall/f1-counts.pdf){#fig-prec_recall_counts}
+
+Recovery depends on the sample size, underlying network topology, and data type. We analyzed `r list.files("../steps/fits/", pattern = ".Rds") |> length()` simulated networks. All networks had 100 nodes (OTUs). We measured the F1 score across data types, sample sizes, and methods. A total of `r 30*53` models were evaluated.
+:::
+
+Published methods are challenging to compare, as their articles report results under different conditions (i.e., sample size, number of OTUs, sparsity of true graph, or generative model) [@kurtz2015; @vinciotti; @jiang2020]. Besides, the authors emphasize favorable settings with high sample sizes and relatively few OTUs, which might be unfeasible in typical microbiology-ecology projects [@kurtz2015]. Therefore, we evaluated the recovery of the true graph with `r list.files("../steps/fits/", pattern = ".Rds") |> length()` simulated datasets under what I argue are more realistic settings.
+
+As mentioned, we have considered two methods: SpiecEASI and its Bayesian alternative with a G-Wishart prior. SpiecEASI predicted the optimal graph selected according to the StARS criterion ($\beta=0.05$) and inferred with the Meinshausen and Bühlmann method. Using the Bayesian, we predicted the graph of all edges whose posterior inclussion probability was greater than $0.5$ (more details in the Methods section). We chose it over the Maximum *a posteriori* because we got better results during our exploratory analysis.
+
+Both methods use normal multivariate data as input, as most of the available statistical software. An appropriate transformation must be done before inferring the network with microbial counts. To measure the effect of this transformation and determine an upper bound on the expected performance, we evaluated the recovery using two types of data: normal multivariate data without and microbial counts (after applying the centered log-ratio transformation).
+
+@fig-prec_recall shows the F1-score for different sample sizes and datasets. The F1-score summarizes the precision (number of true positive edges divided by the number of edges) and recall (number of true positive edges divided by the number of true edges). For both methods, the inference improved with the same size. We observed differences between the three topologies, the most challenging being hub topology. Linking the data to microbial counts and applying the centered log-ratio transformation afterward adversely affected recovery, which became more weakly dependent on the sample size ([@fig-prec_recall_counts]). The inference for a low sample size of 25 was poor in all cases (F1 below 0.25).
+
+```{r}
+#| include: false
+library(tidyverse)
+lrt_p <- read_csv("../steps/correlation_node_f1.csv") |>
+  drop_na() |>
+  arrange(desc(method)) |> 
+  pull("p.value") |>
+  format(digits = 2, scientific = TRUE)
+paired_p <- read_csv("../steps/paired_test_f1.csv") |>
+  pull("p.value") |>
+  format(digits = 2, scientific = TRUE)
+```
+
+The Bayesian method performed significantly better than SpiecEASI with both normal-multivariate data and microbial counts (p = `r paired_p[[1]]` and p = `r paired_p[[2]]` from a paired-Welch test on the difference of F1 means). SpiecEASI exhibited greater variability than the Bayesian method when considering a fixed graph structure and sample size. A portion of this variability can be attributed to differences in the maximum degree, denoted as $d$, across various simulated graphs. The maximum degree, $d$, plays an important role in the necessary number of samples to recover the true graph [@kurtz2015]. We found the $d$ term significant in a likelihood ratio test (p =`r lrt_p[[1]]`) for SpiecEASI but not for the Bayesian method.
+
+![SpiecEASI tends to over-select edges. We show the recall versus the precision of the same models as @fig-prec_recall_counts (only microbial counts)](../figures/01-precision-recall/prec_recall-counts.pdf){#fig-precision_recall_counts}
+
+SpiecEASI tended to over-select edges, and we obtained more complete graphs at the cost of more spurious edges ([@fig-precision_recall_counts]). According to the established inclusion threshold, the Bayesian method favors one type of error or the other. $\alpha$. Intuitively, the $\alpha = 0.5$ choice led to a more balanced distribution of the error types.
+
+![Selecting the $k$ top-ranked edges of SpiecEASI improves accuracy for low-sample size. We show the precision when predicting only the presence of the top $k$-ranked edges. We ranked the edges according to the probability of inclussion (Bayesian) and stability between resamples (SpiecEASI). Different lines show the tendency across sample sizes. We include points sampled at random from the dataset for better visualization. We evaluated the expected precision when selecting edges randomly (grey baseline).](../figures/09-ranked_edges/plot.pdf){#fig-ranked}
+
+Finally, we consider the case of analyzing only the top-ranked edges. The researcher may not want to recover the whole graph, but she wants to study the presence of specific edges. We assessed the proportion of incorrect edges included when only the edges with the highest confidence were considered. SpiecEASI does not compute probabilities but stability scores between sub-samples. Instead, we compared both methods by including the $k$ top-ranked edges ([@fig-ranked]).
+
+The success of this strategy is highly dependent on the sample size. However, it gives better results for SpiecEASI, especially for the low sample size. Our results suggested that obtaining a relatively high precision (above 50%) might be feasible if we restrict the number of edges to the $k-top$.
+
+## Predicting network properties
+
+It has been pointed out that recovering the entire microbial network might be unrealistic, and our results suggest the same. However, it has been shown that, under certain conditions, inferred networks with errors reflect the true network's properties. We analyzed the error of three representative metrics for different sample sizes: modularity, hub score, and distances between OTUs.
+
+::: {#fig-regression layout-ncol="1"}
+![](../figures/07-regression_combined/modularity_boxplot.pdf){#fig-mod}
+
+![](../figures/07-regression_combined/hub_score.pdf){#fig-hubscore}
+
+Predicted network properties might be unreliable, especially for low-sample sizes. We show the results for the same models as @fig-prec_recall_counts (only microbial counts). (a) We show the differente between the true and predicted modularity. (b) We show the mean square error (MSE) of every node's true and predicted hub score.
+:::
+
+None of the methods performs better on all metrics. However, the Bayesian method is generally more robust to variations in true networks than SpiecEASI, which can be unstable. This result is consistent across topologies, graph sizes, and dataset types (normal-multivariate or microbial counts).
+
+Regarding modularity, the Bayesian method outperformed SpiecEASI, which systematically overestimated it ([@fig-mod]). Even with very high sample sizes, the error was considerably high. Unlike the modularity, the hub scores' mean square error (MSE) was relatively low, even for medium sample sizes ([@fig-hubscore]).
+
+The distances between nodes were the less reliable metric. Unlike the modularity and hub score, which showed much variability between different networks, the correlation between the inferred and actual distances was systematically bad (close to zero) for low sample sizes. However, it increases with the sample size. SpiecEASI performance was very unstable and dependent on the graph sizes.
+
+## Confidence and credibility intervals
+
+Studies that use network properties would benefit from uncertainty measurements. This is especially true given that ours results suggest these metrics are often unreliable, especially for low sample sizes. We computed confidence intervals for SpiecEASI by bootstrapping for all previous metrics and credibility intervals for SpiecEASI by sampling from the posterior chain of networks.
+
+::: {#fig-intervals layout-ncol="1"}
+![Fraction of nodes with hub-score within the 95% credibility or confidence interval](../figures/03-credibility-confidence/hub_nodewise_contain.pdf){#fig-nodewise_contain}
+
+![95% credibility or confidence interval range](../figures/03-credibility-confidence/hub_nodewise_size.pdf){#fig-nodewise_size}
+
+Our results suggest neither credibility nor confidence intervals are more reliable than their point estimates. We show the results for ten random networks we estimated from microbial counts with a range of relatively low sample sizes. (a) We computed their hub score of 95% credibility and 9% confidence interval for every node. We show the fraction of nodes whose true value was within that range. (b) We computed the range of every 95% credibility or 95% confidence interval (i.e., $Q_{0.975} - Q_{0.025}$).
+:::
+
+We show results only of the hub-score estimated from microbial, as it is the one we analyzed in more detail. We chose it because it is the most well-known metric. However, we obtained similar results for the rest of the measures when estimating them with microbial counts. The 95% confidence and credibility intervals are extensive since their range comprises between 25% and 75% of the entire range of possible values (from zero to one). Surprisingly, the fraction of nodes whose credibility or confidence interval contains their true hub score also oscillates in the same range.
+
+There is a negative relationship between the number of samples and the range of the bootstrap confidence interval for SpiecEASI. However, the fraction of nodes with their true hub score within their 95% confidence interval decreases similarly when we increase the sample size (i.e., increasing the sample size narrows the confidence interval but not around the true value).
+
+The Bayesian showed a very narrow confidence interval for low sample size (as it tends to predict sparse networks). For larger sample sizes, it shows a very weak negative correlation. We saw no significant improvements for the Bayesian method when increasing the sample size, as the fraction of nodes's hub scores within their 95% credibility interval oscillates around 25% and 75%.
+
+## Module detection
+
+Finally, we evaluated how reliable the clusters obtained from co-occurrence networks are. In most cases, we want to detect groups of microorganisms that tend to co-occur together (and not the other way around). To do this, we have to consider the edge sign (i.e., of the $i, j$ element of the precision matrix). However, SpiecEASI, by default, uses the Meinshausen and Buhlmann method, which only calculates the zero entries of the precision matrix. Therefore, and only in this case, did we use the glasso method with SpiecEASI due to their inferior performance.
+
+![SpiecEASI provides more reliable cluster partitions. We show the adjusted mutual information between the true and predicted clusters for five networks across different sample sizes. Clusters were obtained only by considering positive correlations.](../figures/10-cluster_niche_preference/cluster_ami.pdf){#fig-ami}
+
+After filtering all nonpositive co-occurrence edges, we computed the adjusted mutual information (AMI) of the true and inferred clusters ([@fig-ami]). The AMI metric compares the similarity between two partitions of potentially different sizes, and it takes a value of one if both partitions are identical and zero when the overlap equals the expected by chance alone. The obtained clusters were surprisingly reliable, and SpiecEASI (in its glasso version) was consistently better than its Bayesian alternative. Even for the middle sample size, it was possible to get meaningful clusters.
+
+# Discussion
+
+There is no standard protocol for the simulation of synthetic datasets for network construction, and there is a need for theoretical justification for the many choices that must be made. Which network topologies are representative of true networks? Although simulating random networks is the obvious choice in the absence of more information, we still have to decide how sparse the network to be (ex., if we model the absence/presence of every edge as a Bernoulli random variable, we still have to decide which probability to use).
+
+All methods, whether explicitly or implicitly, assume a latent normal multivariate random variable is somehow linked to the microbial abundances. We constructed the synthetic datasets by first simulating the latent variable and then simulating the counts according to a negative binomial in such a way the abundances were correlated in the same way as in the original latent variable. We decided to do so because this approach was already implemented in SpiecEASI and BDgraph (both R packages we used to infer the networks) [@mohammadi2019; @kurtz2015]. However, a better option would have been to explicitly model the relationship between both variables, as it would be a more transparent process.
+
+We restricted our analysis to a few network topologies, sample sizes, graph sizes, and a fixed number of OTUs. Then, our conclusions are limited and should be considered cautiously. Although none of the procedures done in this report are very computationally expensive (performing 100 bootstraps with a dataset of 100 OTUs, 100 samples took around fifteen minutes using eight cores), we opted to replicate our results across different random generator seeds rather than explore a larger space of parameters.
+
+Recovering the whole true microbial network is an unrealistic goal for typical microbial datasets. It is unreasonable to expect the method to perform better when providing the microbial counts rather than the latent variable as input (see [@ fig-prec_recall]). Then, researchers should carefully consider how the number of false positives and false negative would impact their analysis. SpiecEASI is based on StARS, a selection method that was designed to overestimate the number of edges, and, accordingly, we found the same ([@fig-precision_recall_counts]). Despite being widely used, it is not common practice to justify whether that choice is appropriate. In that sense, the Bayesian alternative could be tuned for the specific research questions by choosing a different threshold  $\alpha$. The predicted graph includes all edges for which the posterior probability is greater than $\alpha$. Decreasing $\alpha$ favors recall, and increasing it favors precision. 
+
+The precision of SpiecEASI can be greatly improved by considering only a few top edges (as already proposed by @kurtz2015 (see @fig-ranked). SpiecEASi and all methods based on StARS do not model actual probabilities but confidence scores based on stability between subsamples. Because these confidence scores do not have a straightforward interpretation, the choice is usually made based on the ranked edges (i.e., choose the $k$ edges we are more confident about). There is no straightforward procedure to choose $k$, and, arguably, it is a decision that can lead to undesired results hacking.
+
+It is possible to achieve meaningful network estimates from networks in the presence of errors. For example, one can obtain virtually perfect estimate of the modularity of a network if the number of spurious edges equals the number of missing edges (results not included in this report). One essential aspect we have deliberately ignored in this report, focusing only on the edges, is what happens when we agglomerate several nodes [@röttjers2018]. This can happen intentionally when we agglomerate OTUs at a certain level or unintentionally if we fail to distinguish between two species when clustering sequences into OTUs.
+
+We analyzed the modularity, the hub-score, and the distance between nodes as they are between the most commonly used metrics [@lurgi2019; @zamkovaya2021; @anetwor]. The three metrics had considerable error in the studied range of sample sizes. Commonly, authors of a particular method reported results with non-applicable settings to the microbiome analysis. For example, @kurtz2015 reported results for 68 OTUs and 1360 samples. Our results, limited as we explained before, suggest that researchers should consider that predicted network properties are error-prone.
+
+Later, we focused in the hub-score metric to analyze up to what extent it is possible to measure the uncertainty of the metrics using confidence and credibility intervals. XXX
+
+Finally, we consider the cluster detection. XXX
+
+# Conclussions
+
+It is a very novel field with a lot to do
+
+# Methods
+
+\newpage
+
+# References

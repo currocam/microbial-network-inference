@@ -4,7 +4,6 @@ using GLMNet
 using RData
 import CodecBzip2
 using BenchmarkTools
-using GLMNet
 using LightGraphs
 using StatsBase
 using Random
@@ -103,17 +102,48 @@ function StARS(X, n_subsamples, β=0.05)
 end
 
 ## Example
-# R"""
-# z <- huge::huge.generator(n = 100, d = 100, graph ="random")
-# theta <- as.matrix(z$theta)
-# data <- as.matrix(z$data)
-# """
-# @rget theta
-# @rget data
-# true_graph = SimpleGraph(theta .!= 0)
-# opt = StARS(data, 20)
-# tp = length(intersect(edges(opt), edges(true_graph)))
-# fp = length(edges(opt)) - tp
-# fn = length(edges(true_graph)) - tp
-# precision = tp / (tp + fp)
-# recall = tp / (tp + fn)
+R"""
+z <- huge::huge.generator(n = 100, d = 100, graph ="random")
+theta <- as.matrix(z$theta)
+data <- as.matrix(z$data)
+"""
+@rget theta
+@rget data
+true_graph = SimpleGraph(theta .!= 0)
+opt = StARS(data, 20)
+tp = length(intersect(edges(opt), edges(true_graph)))
+fp = length(edges(opt)) - tp
+fn = length(edges(true_graph)) - tp
+precision = tp / (tp + fp)
+recall = tp / (tp + fn)
+
+function lasso(X, Y, λ)
+  n, p = size(X)
+  β = zeros(p)
+  β_old = zeros(p)
+  # Cache  some computations
+  XTY = X' * Y
+  XTX = X' * X
+  # Initialize β
+  for j in 1:p
+    update = (1 / n) * XTY[j]
+    β[j] = sign(update) * max(abs(update) - λ, 0)
+  end
+  β_old .= β
+  # While not converged
+  while true
+    for j in 1:p
+      update = (1 / n) * (XTY[j] - XTX[j, k] * β[k]) + β[j]
+      β[j] = sign(update) * max(abs(update) - λ, 0)
+    end
+    if norm(β - β_old) < 1e-6
+      break
+    end
+    β_old .= β
+  end
+
+
+end
+
+# Add intercept to data
+X = [ones(size(data, 1)) data]

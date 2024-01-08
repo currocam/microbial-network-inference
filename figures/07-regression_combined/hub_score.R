@@ -46,7 +46,9 @@ data |>
   ylab("MSE of the hub-score") +
   scale_color_nejm(labels = c("Bayesian", "SpiecEASI", "Combined")) +
   labs(color = "") +
-  theme(legend.position = "none")
+  theme(legend.position = "none")+
+  ylim(c(0, 1))
+
 
 ggsave(
   "figures/07-regression_combined/hub_score.pdf",

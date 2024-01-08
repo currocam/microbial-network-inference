@@ -45,7 +45,7 @@ data |>
   theme_bw() +
   scale_y_reverse() +
   xlab("Number of samples") +
-  ylab("Modularity error") +
+  ylab("True modularity - inferred modularity") +
   scale_color_nejm(labels = c("Bayesian", "SpiecEASI", "Combined")) +
   labs(color = "") +
   theme(legend.position = "none")+

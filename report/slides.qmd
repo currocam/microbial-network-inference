@@ -1,0 +1,247 @@
+---
+title: Assessing reliability of learning Gaussian graphical models from microbial abundances 
+subtitle: Project in Bioinformatics (10 ECTS)
+format:
+    revealjs:
+      theme: [default, clean.scss]
+      center: true
+      menu:
+        side: left
+      slide-number: true
+      date-format: long
+      transition-speed: fast
+
+author:
+  - name: Curro Campuzano Jiménez
+    orcid: 0000-0001-8285-9318
+    email: campuzanocurro@gmail.com
+    affiliations: Bioinformatics Research Centre, Aarhus University
+date: last-modified
+---
+
+## Microbial networks
+
+### From "who is there" to "who co-occurs with whom, and why?"
+
+-   Amplicon and metagenomic sequencing has generated lot's of co-occurrence data in the past few years.
+
+\newline
+
+-   A microbial co-occurrence networks is a [representation of the conditional dependence structure between microbial abundances]{.alert}[^1]
+    -   Nodes are taxonomic units
+    -   Edges are significant associations
+
+[^1]: If talking about Gaussian graphical models
+
+\newline
+
+::: {.notes}
+1. NGS generated lot's of data
+2. Microbial ecology has focused in descriptive studies
+3. Networks tries to answer questions about ""
+4. Presentation
+
+:::
+
+## Gaussian graphical models in a nutshell
+
+### A cartoon version
+
+$$X \sim \mathcal N_p(0, \Omega^{-1})$$
+
+![Explanatory diagram](images/cartoon.png){fig-align="center" width="100%" #fig-cartoon}
+
+::: {.notes}
+Very quick recap before I introduce the two methods i compared
+
+1. First, co-occurrences, then transformation
+2. Estimate precision matrix
+3. Determine the graph
+:::
+
+## Graphical lasso
+
+### Estimating an sparse precision matrix in the likelihood framework (graphical lasso)
+
+For a given $\lambda$, just solve
+
+$$
+\hat \Omega(\lambda) = \arg \min_{\Omega\in M^+} (-L(\Omega) + \lambda ||\Omega||_1)
+$$
+
+But, how do you choose $\lambda$?
+
+::: {.notes}
+Empirical precision matrix is never zero, but close too. Very natural choice L1.
+:::
+
+## SpiecEASI (CLR + StARS)
+### SpiecEASI selects $\lambda$ using the StARS after applying CLR
+
+1. First, transform data using the centered log-ratio
+
+2. Compute the stability of each edge across subsamples without replacement using Meinshausen and Bühlmann method
+
+3. Choose $\lambda$ so there is a small but acceptable amount of variability ($\beta=0.05$)
+
+::: {.notes}
+Popularized by SpiecEASI. It is in fact a combination of clr, and StARS. 
+:::
+
+## Bayesian Gaussian graphical model
+
+### Estimating an sparse precision matrix in the Bayesian framework
+
+-   We do not use a lasso prior, but a [discrete and continuous mixture prior distribution]{.alert} called G-Wishart
+
+-   Estimate the joint posterior distribution of the graph and the precision matrix using a trans dimensional MCMC algorithm
+
+$$
+P(G, \Omega|Z) \propto P(Z|G, \Omega) P(\Omega|G)P(G)
+$$
+
+-   An average edge inclusion probability can be computed as the frequency of that edge when sampling from the chain
+
+::: {.notes}
+
+A Bayesian model seems nice, because you could marginalize across $\lambda$, however, we have problems...
+:::
+
+## Motivation
+
+### How reliable their results are in the context of typical microbial ecology studies?
+
+Gaussian graphical models have received lots of attention since the publication of SpiecEASI ($>1000$ citations), which popularized using StARS
+
+\newline
+
+I compared SpiecEASI with a novel Bayesian approach with a main focus in measuring the effect of the sample size
+
+## {}
+
+::: {.text-center}
+<div>
+<h1>Results</h1>
+</div>
+:::
+
+## Simulation of synthetic datasets
+
+### No standard simulation protocol or curated benchmark dataset exists
+
+We simulated multivariate normal data and microbial counts for 53 graphs of different characteristics. 
+
+![Simulated Random network](images/random_graph.png){fig-align="center" width="100%" #fig-network}
+
+## Recovery of true graph (F1 score)
+### Recovering the whole microbial network is an unrealistic goal
+
+![F1 distribution across 1590 models trained with microbial counts](images/f1-counts.png){fig-align="center" width="100%" #fig-f1-microbial}
+
+
+## Recovery of true graph
+### What do you prefer, spurious or missing edges?
+
+![Recall and precision distribution across 1590 models trained with microbial counts](images/prec_recall-counts.png){fig-align="center" width="100%" #fig-recallprec}
+
+## Predicting network properties (modularity)
+
+### Network properties have large associated errors 
+
+![Modularity error across 1590 models trained with microbial counts](images/modularity_boxplot.png){fig-align="center" width="100%" #fig-mod}
+
+## Module identification clusters (niche preference)
+
+### SpiecEASI outperforms the Bayesian method when identifying clusters
+
+![Comparison of the true and inferred clusters for 60 models trained with microbial counts](images/cluster_ami.png){fig-align="center" width="100%" #fig-moduleident}
+
+## Credibility and confidence  intervals (hub-score) 
+### Credibility and confidence intervals can hardly improve the analysis robustness
+
+::: {#fig-intervals layout-ncol=2}
+
+![](images/hub_nodewise_contain.png){fig-align="center" width="100%" #fig-contain}
+
+![](images/hub_nodewise_size.png){fig-align="center" width="100%" #fig-range}
+
+Credibility and confidence intervals for 60 models trained with microbial counts
+:::
+
+## Future work
+
+1. Write agnostic simulation software to assess uncertainty
+2. What happens when we aggregate nodes?
+3. And what happens with known confounding variables (environmental factors)?
+
+## Conclussion
+
+1. Researchers may have overestimated the reliability of network inference methods
+
+2. They should justify their choices and link them to biology
+
+3. They should consider the associated error of their estimands via extensive simulation of synthetic datasets
+
+## Thanks!
+
+## Extra {visibility="uncounted"}
+
+## Methods {visibility="uncounted"}
+
+Our code is available in ![GitHub](https://github.com/currocam/microbial-network-inference). 
+
+
+
+## Gaussian graphical models in a nutshell {visibility="uncounted"}
+
+### Math definition
+
+Let us consider a multivariate Gaussian random variable $X \sim \mathcal N_p(0, \Omega^{-1})$.[^2] Let us consider an undirected graph $G(V, E)$.
+
+[^2]: $\Sigma$ it is the covariance matrix, and $\Omega := \Sigma^{-1}$ the precision matrix
+
+\newline
+
+1.  If $\Omega_{ij} = 0$, then $X_i$ and $X_j$ are [independent]{.fg style="--col: #83a344   "} when conditioning on the rest of the dimensions.
+2.  If edge $(i, j) \in E$, then node $i$ and node $j$ are [dependent]{.fg style="--col: #ca547e "} when conditioning on the rest of the dimensions.
+3.  Then, after estimating $\hat \Omega^{-1}$ from data, we can determine the graph from the pattern of zero entries in $\hat \Omega^{-1}$.
+
+## Data transformation {visibility="uncounted"}
+
+### The centered log-ratio transformation
+
+-   Microbial abundance data is not normal and it is [highly compositional]{.alert}
+    -   Apply $\text{clr}(\mathbf x)_i= \log\frac{x_i}{g(\mathbf x)}$ with $g(\mathbf x) = \left(\prod_{i=1}^Dx_i\right)^{1/D}$
+
+::: {#fig-transformation layout-ncol=2}
+
+![](images/abundances.svg){fig-align="center" width="100%" #fig-abundances}
+
+![](images/clr.svg){fig-align="center" width="100%" #fig-clr}
+
+Simulated microbial abundances before and after transformation
+:::
+
+## StARS {visibility="uncounted"}
+### Stability Approach to Regularization Selection (StARS)
+
+1.  Draw $m$ subsamples without replacement
+2.  Infer $m$ graphs for each $\lambda_i$ using the Meinshausen and Bühlmann method (slightly different approach)
+3.  Measure the edge instability through the $m$ samples for a fixed $\lambda$
+4.  Choose sparsest graph such that the [average total instability]{.alert} is equal to or more than $\beta=0.05$
+
+::: {.notes}
+Popularized by SpiecEASI. It is in fact a combination of clr, and StARS. 
+:::
+
+
+## $k$ top-ranked edges {visibility="uncounted"}
+
+### We can increase the accuracy, at the cost of having a new parameter $k$
+
+![Precision of the top $k$ edges ranked according to probability of inclussion or stability score ](images/kranked.png){fig-align="center" width="100%" #fig-ktop}
+
+## Hu et al. {visibility="uncounted"}
+
+![Hu et al. used 328 taxa and 9 samples, and 152 taxa and 9 samples](images/huetal.png){fig-align="center" width="100%"}
+

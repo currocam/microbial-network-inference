@@ -6,4 +6,17 @@ This project was part of my MSc. in Bioinformatics at Aarhus University.
 
 All code is provided (directory code and src). You can easily reproduce my results using a Makefile. 
 
+To reproduce the enviroment: 
+
+```bash
+make
+```
+
+To run the scripts:
+
+```bash
+make plan
+make run
+```
+
 TODO: Add slides

@@ -90,7 +90,7 @@ Popularized by SpiecEASI. It is in fact a combination of clr, and StARS.
 
 ## Bayesian Gaussian graphical model
 
-### Estimating an sparse precision matrix in the Bayesian framework
+### Estimating an sparse precision matrix using BDgraph
 
 -   We do not use a lasso prior, but a [discrete and continuous mixture prior distribution]{.alert} called G-Wishart
 

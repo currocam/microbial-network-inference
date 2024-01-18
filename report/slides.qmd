@@ -188,7 +188,7 @@ Credibility and confidence intervals for 60 models trained with microbial counts
 
 ## Methods {visibility="uncounted"}
 
-Our code is available in ![GitHub](https://github.com/currocam/microbial-network-inference). 
+Our code is available in [GitHub](https://github.com/currocam/microbial-network-inference). 
 
 
 

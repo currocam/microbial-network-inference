@@ -139,9 +139,8 @@ We simulated multivariate normal data and microbial counts for 53 graphs of diff
 ![F1 distribution across 1590 models trained with microbial counts](images/f1-counts.png){fig-align="center" width="100%" #fig-f1-microbial}
 
 
-## Recovery of true graph
-### What do you prefer, spurious or missing edges?
-
+## What do you prefer, spurious or missing edges?
+### SpiecEASI seeks to minimize the number of missing edges
 ![Recall and precision distribution across 1590 models trained with microbial counts](images/prec_recall-counts.png){fig-align="center" width="100%" #fig-recallprec}
 
 ## Predicting network properties (modularity)
